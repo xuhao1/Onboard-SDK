@@ -31,8 +31,11 @@ add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 add_dependencies(${PROJECT_NAME} djiosdk-wrapper)
 
+link_directories(/usr/local/lib)
 target_link_libraries(${PROJECT_NAME} 
   djiosdk-core 
   djiosdk-platform 
-  djiosdk-wrapper)
+  djiosdk-wrapper
+        suinput
+        )
 

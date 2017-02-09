@@ -37,18 +37,61 @@
 #include <DJI_Version.h>
 #include <DJI_WayPoint.h>
 
+#include <keyboard_event.h>
+
 using namespace std;
 using namespace DJI;
 using namespace DJI::onboardSDK;
 
+uint8_t from_mobile_data[1024] = {0};
+
+int get_data_after_header(Header * header,uint8_t * data)
+{
+  int package_min = sizeof(Header) + sizeof(uint32_t) + 2;
+  int data_len = header->length - package_min;
+  memcpy(data,(uint8_t*)header + sizeof(Header) + 2,data_len);
+
+  return data_len;
+}
+void handle_mouse_keyboard_event(key_mouse_event * event)
+{
+  switch (event->event_type)
+  {
+    case KEYBOARD_EVENT:
+      keyboard_event(event->data);
+          break;
+    case MOUSE_MOVE_EVENT:
+      mouse_move_event(event->data[0],event->data[1]);
+          break;
+    case MOUSE_PRESS_EVENT:
+      mouse_press_event(event->data[0],event->data[1],event->data[2]);
+      break;
+
+  }
+}
+void from_mobile_callback(DJI::onboardSDK::CoreAPI * coreAPI, Header * header, UserData userData)
+{
+  int len = get_data_after_header(header,from_mobile_data);
+  key_mouse_event event;
+  memcpy(&event,from_mobile_data,len);
+    handle_mouse_keyboard_event(&event);
+  std::cout<< "data is |"<<(int)event.event_type<< "| "<<event.data[0]<<" "<<event.data[1]<<" "<<event.data[2] << "$"<< std::endl;
+}
+int setup_keyboard_event(CoreAPI * coreAPI)
+{
+    coreAPI->setFromMobileCallback(from_mobile_callback);
+  init_keyboard_event();
+  std::cout << "Setup callback!" << std::endl;
+  return 1;
+}
 //! Main function for the Linux sample. Lightweight. Users can call their own API calls inside the Programmatic Mode else on Line 68. 
 int main(int argc, char *argv[])
 {
+  printf("Hello,World\n");
   //! Instantiate a serialDevice, an API object, flight and waypoint objects and a read thread.
   LinuxSerialDevice* serialDevice = new LinuxSerialDevice(UserConfig::deviceName, UserConfig::baudRate);
   CoreAPI* api = new CoreAPI(serialDevice);
   Flight* flight = new Flight(api);
-  WayPoint* waypointObj = new WayPoint(api);
 
   //! Enable non-blocking callback thread mechanism
   api->nonBlockingCBThreadEnable = true;
@@ -56,7 +99,7 @@ int main(int argc, char *argv[])
   //! Initializes the read thread and the call back thread.
   LinuxThread readThread(api,2);
   LinuxThread CallbackThread(api,3);
-
+  std::cout << "Init program" << std::endl;
 
   //! Setup
   int setupStatus = setupNonBlocking(serialDevice, api, &readThread, &CallbackThread);
@@ -67,42 +110,19 @@ int main(int argc, char *argv[])
   }
 
   api->getDroneVersion(1);
-
   activateNonBlocking(api);
   usleep(100000);
   //! We are successfully activated. Try to take control.
-  takeControlNonBlocking(api);
-  usleep(100000);
-  //! Set broadcast Freq Defaults
-  unsigned short broadcastAck = api->setBroadcastFreqDefaults(1);
 
-  //! Mobile Mode
-  if (argv[1] && !strcmp(argv[1],"-mobile"))
+  if (setup_keyboard_event(api) != 0 )
   {
-    std::cout << "Listening to Mobile Commands\n";
-    mobileCommandSpinNonBlocking(api, flight, waypointObj);
-  }
-  //! Interactive Mode
-  else if (argv[1] && !strcmp(argv[1], "-interactive"))
-  {
-    interactiveSpin(api, flight, waypointObj);
+
+    while(true)
+    {
+      sleep(1);
+    }
   }
 
-  else if (argv[1] && !strcmp(argv[1], "-programmatic"))
-  {
-    std::cout << "Add your programmatic code here.\n";
-  }
-  //! Programmatic Mode - execute everything here without any interactivity. Useful for automation.
-
-  else
-    std::cout << "\nYou need to call the OSDK Linux sample with one of\n"
-                 "the following arguments: \n\n"
-                 "-mobile      : Run in Mobile Data Transparent Transmission mode\n"
-                 "-interactive : Run in a Terminal-based UI mode\n"
-                 "-programmatic: Run without user input, use if you have put automated\n"
-                 "               calls in the designated space in the main function. \n"
-                 "               By default this mode will execute an automated waypoint\n"
-                 "               mission example, so be careful.\n\n";
   //! Cleanup
   int cleanupStatus = cleanupNonBlocking(serialDevice, api, flight, &readThread , &CallbackThread);
   if (cleanupStatus == -1)

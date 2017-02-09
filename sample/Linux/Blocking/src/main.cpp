@@ -44,7 +44,34 @@
 using namespace std;
 using namespace DJI;
 using namespace DJI::onboardSDK;
+uint8_t from_mobile_data[1024] = {0};
 
+int get_data_after_header(Header * header,uint8_t * data)
+{
+  int package_min = sizeof(Header) + sizeof(uint32_t) + 2;
+  int data_len = header->length - package_min;
+  memcpy(data,header + sizeof(Header) + 2,data_len);
+  for (int  i = 0;i< header->length;i++)
+  {
+    std::cout << "char " << i << " " << *((uint8_t*)header +  i ) << std::endl;
+  }
+  return data_len;
+}
+void from_mobile_callback(DJI::onboardSDK::CoreAPI * coreAPI, Header * header, UserData userData)
+{
+  int len = get_data_after_header(header,from_mobile_data);
+  std::cout << "Receive Mobile Data!!! len:" << len << std::endl;
+//  key_mouse_event event;
+//  memcpy(&event,from_mobile_data,len);
+//  std::cout<< "data is |"<<(int)event.event_type<< "| "<<event.data[0]<<" "<<event.data[1]<<" "<<event.data[2] << "$"<< std::endl;
+
+}
+int setup_keyboard_event(CoreAPI * coreAPI)
+{
+    coreAPI->setFromMobileCallback(from_mobile_callback);
+  std::cout << "Setup callback!" << std::endl;
+  return 1;
+}
 //! Main function for the Linux sample. Lightweight. Users can call their own API calls inside the Programmatic Mode else on Line 68. 
 int main(int argc, char *argv[])
 {
@@ -52,8 +79,6 @@ int main(int argc, char *argv[])
   LinuxSerialDevice* serialDevice = new LinuxSerialDevice(UserConfig::deviceName, UserConfig::baudRate);
   CoreAPI* api = new CoreAPI(serialDevice);
   Flight* flight = new Flight(api);
-  WayPoint* waypointObj = new WayPoint(api);
-  Camera* camera = new Camera(api);
   LinuxThread read(api, 2);
 
   //! Setup
@@ -61,80 +86,21 @@ int main(int argc, char *argv[])
   if (setupStatus == -1)
   {
     std::cout << "This program will exit now. \n";
-    return 0;
+//    return 0;
   }
-  //! Set broadcast Freq Defaults
-  unsigned short broadcastAck = api->setBroadcastFreqDefaults(1);
-  usleep(500000);
-  //! Mobile Mode
-  if (argv[1] && !strcmp(argv[1],"-mobile"))
+//  unsigned short broadcastAck = api->setBroadcastFreqDefaults(1);
+//  usleep(500000);
+//  ! Mobile Mode
+//  api->getDroneVersion(1);
+//  activateNonBlocking(api);
+//  usleep(100000);
+
+  if (setup_keyboard_event(api) != 0 )
   {
-    std::cout << "Listening to Mobile Commands\n";
-    mobileCommandSpin(api, flight, waypointObj, camera, argv, argc);
-  }
-  //! Interactive Mode
-  else if (argv[1] && !strcmp(argv[1], "-interactive"))
-  {
-    if (argc > 3)
-      interactiveSpin(api, flight, waypointObj, camera, std::string(argv[2]), std::string(argv[3]));
-    else if (argc == 3)
-      interactiveSpin(api, flight, waypointObj, camera, std::string(argv[2]), std::string(""));
-    else
-      interactiveSpin(api, flight, waypointObj, camera, std::string(""), std::string(""));
-  }
-  //! Programmatic Mode - execute everything here without any interactivity. Useful for automation.
-  else if (argv[1] && !strcmp(argv[1], "-programmatic"))
-  {
-    /*! Set a blocking timeout - this is the timeout for blocking API calls
-        to wait for acknowledgements from the aircraft. Do not set to 0.
-    !*/
-    int blockingTimeout = 1; //Seconds
-    
-    //! Monitored Takeoff
-    ackReturnData takeoffStatus = monitoredTakeoff(api, flight, blockingTimeout);
-
-    //! Set broadcast Freq Defaults
-    unsigned short broadcastAck = api->setBroadcastFreqDefaults(1);
-    
-    //! If the aircraft took off, continue to do flight control tasks 
-    if (takeoffStatus.status == 1)
-    {
-
-      /*! This is where you can add your own flight functionality.
-          Check out LinuxWaypoint and LinuxFlight for available APIs. 
-          You can always execute direct Onboard SDK Library API calls
-          through the api object available in this example.
-      !*/ 
-
-      //! Do aircraft control - Waypoint example. 
-      wayPointMissionExample(api, waypointObj,blockingTimeout);
-
-      //! Land
-      ackReturnData landingStatus = landing(api, flight,blockingTimeout);
-    }
-    else 
-    {
-      //Try to land directly
-      ackReturnData landingStatus = landing(api, flight,blockingTimeout);
+    while(true) {
+      sleep(1);
     }
   }
-  //! No mode specified or invalid mode specified" 
-  else
-    std::cout << "\n Usage: ./djiosdk-linux-sample [MODE] [TRAJECTORY] [GAIN TUNING]\n"
-                 "\n"
-                 "[MODE] : \n"
-                 "-mobile      : Run in Mobile Data Transparent Transmission mode\n"
-                 "-interactive : Run in a Terminal-based UI mode\n"
-                 "-programmatic: Run without user input, use if you have put automated\n"
-                 "               calls in the designated space in the main function. \n"
-                 "               By default this mode will execute an automated waypoint\n"
-                 "               mission example, so be careful.\n\n"
-                 "[TRAJECTORY] : \n"
-                 "path_to_json_file : Optionally, supply a json file with parameters for executing a\n"
-                 "                    trajectory planned with the DJI Trajectory SketchUp Plugin\n\n";
-                 "[GAIN TUNING] : \n"
-                 "path_to_json_file : Optionally, supply a json file with custom controller gains for\n"
-                 "                    executing precision missions on loaded aircraft\n\n";
   //! Cleanup
   int cleanupStatus = cleanup(serialDevice, api, flight, &read);
   if (cleanupStatus == -1)
